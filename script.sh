@@ -184,6 +184,8 @@ printf '     - patator\n'
 printf '     - vncsnapshot\n'
 printf '     - zmap\n'
 printf '     - htop\n'
+printf '     - mosh\n'
+printf '     - tmux\n'
 printf '     - NFS server\n'
 printf '     - DNS Server\n'
 printf '     - hcxtools (hashcat)\n'
@@ -201,6 +203,8 @@ apt-get install \
     vncsnapshot \
     zmap \
     htop \
+    mosh \
+    tmux \
     nfs-kernel-server \
     dnsmasq \
     hcxtools \
@@ -210,6 +214,24 @@ python2 -m pip install pipenv
 python3 -m pip install pipenv
 apt-get remove mitmproxy
 python3 -m pip install mitmproxy
+
+# default tmux config
+cat <<EOF > "$HOME/.tmux.conf"
+set -g mouse on
+set -g history-limit 50000
+set -g prefix C-a
+bind C-a send-prefix
+unbind C-b
+set-window-option -g mode-keys vi
+
+run-shell /opt/tmux-logging/logging.tmux
+
+# List of plugins
+set -g @plugin 'tmux-plugins/tmux-logging'
+
+# Initialize TMUX plugin manager (keep this line at the very bottom of tmux.conf)
+run '~/.tmux/plugins/tpm/tpm'
+EOF
 
 # enable and start docker
 systemctl stop docker &>/dev/null
@@ -572,6 +594,47 @@ StartupWMClass=Firefox-esr
 StartupNotify=true
 EOF
 fi
+
+printf '\n============================================================\n'
+printf '[+] Enabling bash session logging\n'
+printf '============================================================\n\n'
+
+apt-get install tmux-plugin-manager
+mkdir -p "$HOME/.tmux/plugins" 2>/dev/null
+export XDG_CONFIG_HOME="$HOME"
+export TMUX_PLUGIN_MANAGER_PATH="$HOME/.tmux/plugins"
+/usr/share/tmux-plugin-manager/scripts/install_plugins.sh
+mkdir -p "$HOME/Logs" 2>/dev/null
+
+grep -q 'TMUX_LOGGING' "/etc/profile" || echo '
+logdir="$HOME/Logs"
+if [ ! -d $logdir ]; then
+    mkdir $logdir
+fi
+#gzip -q $logdir/*.log &>/dev/null
+export XDG_CONFIG_HOME="$HOME"
+export TMUX_PLUGIN_MANAGER_PATH="$HOME/.tmux/plugins"
+if [[ ! -z "$TMUX" && -z "$TMUX_LOGGING" ]]; then
+    logfile="$logdir/tmux_$(date -u +%F_%H_%M_%S)_UTC.$$.log"
+    "$TMUX_PLUGIN_MANAGER_PATH/tmux-logging/scripts/start_logging.sh" "$logfile"
+    export TMUX_LOGGING="$logfile"
+fi' >> "/etc/profile"
+
+normal_log_script='
+logdir="$HOME/Logs"
+if [ ! -d $logdir ]; then
+    mkdir $logdir
+fi
+if [[ -z "$NORMAL_LOGGING" && ! -z "$PS1" && -z "$TMUX" ]]; then
+    logfile="$logdir/$(date -u +%F_%H_%M_%S)_UTC.$$.log"
+    export NORMAL_LOGGING="$logfile"
+    script -f -q "$logfile"
+    exit
+fi'
+
+grep -q 'NORMAL_LOGGING' "$HOME/.bashrc" || echo "$normal_log_script" >> "$HOME/.bashrc"
+grep -q 'NORMAL_LOGGING' "$HOME/.zshrc" || echo "$normal_log_script" >> "$HOME/.zshrc"
+
 
     printf '\n============================================================\n'
     printf '[+] Installing Chromium\n'
